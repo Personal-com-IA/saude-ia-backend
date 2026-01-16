@@ -11,7 +11,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        0,
+        272,
         0
       ],
       "id": "a3e61f01-fab8-4203-98d7-06cbdf25a3b0",
@@ -20,38 +20,12 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Você é uma API de Nutriçãoe Personal Trainer. Responda APENAS JSON. Schema: { \\\"calories\\\": 0, \\\"macros\\\": { \\\"protein\\\": 0 } }.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $node['Webhook'].json.body.message }} (Responder JSON)\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" }\n}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        416,
-        0
-      ],
-      "id": "ad95f633-1f62-40be-94f6-6430a37c32ee",
-      "name": "HTTP Request",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "SeoRPOdcAAot4xOf",
-          "name": "Header Auth account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const content = items[0].json.choices[0].message.content;\nconst aiData = JSON.parse(content);\nconst originalInput = $node[\"Webhook\"].json.body;\n\nreturn [\n  {\n    json: {\n      user_id: originalInput.user_id,\n      raw_text: originalInput.message,\n      ...aiData,\n      processed_json: aiData // <--- NOVO: Cria o campo explícito para o banco\n    }\n  }\n];"
+        "jsCode": "const content = items[0].json.choices[0].message.content;\nconst aiData = JSON.parse(content);\nconst originalInput = $node[\"Webhook\"].json.body;\nconst cleanIntent = aiData.intent ? aiData.intent.trim() : 'update_preferences';\n\nreturn [\n  {\n    json: {\n      user_id: originalInput.user_id,\n      intent: cleanIntent,           \n      reply_message: aiData.reply_message, \n      goal: aiData.data.goal || \"Não definido\",\n      injuries: aiData.data.injuries || \"\",\n      disliked_foods: aiData.data.disliked_foods || [],\n      disliked_exercises: aiData.data.disliked_exercises || []\n    }\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        624,
+        2384,
         0
       ],
       "id": "f3c422ef-ed6c-451b-88fe-139edad56323",
@@ -76,15 +50,15 @@
             },
             {
               "fieldId": "protein",
-              "fieldValue": "={{ $json[\"macros\"][\"protein\"] }}"
+              "fieldValue": "={{ Math.round($json[\"macros\"][\"protein\"]) }}"
             },
             {
               "fieldId": "carbs",
-              "fieldValue": "={{ $json[\"macros\"][\"carbs\"] }}"
+              "fieldValue": "={{ Math.round($json[\"macros\"][\"carbs\"]) }}"
             },
             {
               "fieldId": "fat",
-              "fieldValue": "={{ $json[\"macros\"][\"fat\"] }}"
+              "fieldValue": "={{ Math.round($json[\"macros\"][\"fat\"]) }}"
             },
             {
               "fieldId": "processed_json",
@@ -96,14 +70,14 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        832,
-        0
+        2896,
+        -80
       ],
       "id": "eec8cb2c-cd92-47fb-9b46-fa89f2d8337b",
       "name": "Create a row",
       "credentials": {
         "supabaseApi": {
-          "id": "9rjIYnUGBqPT6lCC",
+          "id": "VhDa4G1tWR9JYrwZ",
           "name": "Supabase account"
         }
       }
@@ -111,17 +85,437 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}",
+        "responseBody": "={{\n  {\n    \"message\": $(\"Code in JavaScript\").first().json.reply_message,\n    \"saved_log\": $json\n  }\n}}",
         "options": {}
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1040,
-        0
+        3104,
+        -80
       ],
       "id": "ca68a1c2-74d7-494b-b751-beca63c088eb",
       "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "nutrition",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "d2edb468-0626-4cda-8528-8ec8cc97e63c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3f587364-6965-4b6c-a5bf-70835940156a",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "workout",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "5531c4fe-c22a-4057-8bf4-47cec6fc752d",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "update_preferences|planning",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2576,
+        -16
+      ],
+      "id": "86c6a698-9eee-4b8c-90d0-6a61b4b33588",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "tableId": "workout_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "user_id",
+              "fieldValue": "={{ $json.user_id }}"
+            },
+            {
+              "fieldId": "workout_day",
+              "fieldValue": "={{ $json.workout_day }}"
+            },
+            {
+              "fieldId": "exercises_performed",
+              "fieldValue": "={{ $json.exercises }}"
+            },
+            {
+              "fieldId": "feedback",
+              "fieldValue": "={{ $json.modifications }}"
+            },
+            {
+              "fieldId": "calories_burned",
+              "fieldValue": "={{ $json.calories_burned }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2896,
+        96
+      ],
+      "id": "e6215f62-5ecb-4b05-a9d4-026896832f24",
+      "name": "Create a row1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "VhDa4G1tWR9JYrwZ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  {\n    \"message\": $(\"Code in JavaScript\").first().json.reply_message,\n    \"saved_log\": $json\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3104,
+        96
+      ],
+      "id": "25842728-9842-4027-b24c-97f69995054b",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2224,
+        0
+      ],
+      "id": "ad95f633-1f62-40be-94f6-6430a37c32ee",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tRiAFyf2W3GuJQ9Z",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  {\n    \"message\": $(\"Code in JavaScript\").first().json.reply_message,\n    \"status\": \"Preferências atualizadas com sucesso\",\n    \"data_saved\": $json\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3104,
+        288
+      ],
+      "id": "19bcd80c-5e8f-4b64-9db2-9e310d2927f3",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.user_preferences (user_id, goal, injuries, disliked_foods, disliked_exercises)\nVALUES ($1, $2, $3, $4::jsonb, $5::jsonb)\nON CONFLICT (user_id) \nDO UPDATE SET \n  goal = EXCLUDED.goal,\n  injuries = EXCLUDED.injuries,\n  disliked_foods = EXCLUDED.disliked_foods,\n  disliked_exercises = EXCLUDED.disliked_exercises;",
+        "options": {
+          "queryReplacement": "={{ [ \n  $json.user_id, \n  $json.goal || \"Não definido\", \n  $json.injuries || \"\", \n  JSON.stringify($json.disliked_foods || []), \n  JSON.stringify($json.disliked_exercises || []) \n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2896,
+        288
+      ],
+      "id": "9e3431ce-3238-4430-a695-4db72fbb0ba1",
+      "name": "Execute a SQL query",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Q0ChOV5clkgHAltG",
+          "name": "Supabase - Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "EMERGENCY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "e69f4f23-744e-4c0a-9a93-238d23cbaef9"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7993ae64-879c-401e-aa93-9ccdfd5d931a",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "NORMAL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d712b985-0523-46ca-9a71-cd4617977410",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "PLANNING",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3166e0ec-6f77-42ab-8fd3-5b39a7bff043",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "FEEDBACK",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        -16
+      ],
+      "id": "4bebc2a1-9cc4-47b0-9eb0-2b504dbba071",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"message\": \"⚠️ ALERTA: Detectamos um possível caso de emergência médica. Como uma IA, não posso ajudar. Por favor, dirija-se a um hospital ou ligue para o 192 imediatamente.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1872,
+        -160
+      ],
+      "id": "55df04b3-3128-45ce-b466-1221d83db38b",
+      "name": "Respond to Webhook3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2064,
+        480
+      ],
+      "id": "31f21fa9-a018-4940-b826-24e5e49e4b2a",
+      "name": "Agente Planner",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tRiAFyf2W3GuJQ9Z",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prefsNode = $(\"Get Preferences1\").first(); \nconst prefs = prefsNode ? prefsNode.json : {};\nconst userMsg = $(\"Webhook\").first().json.body.message;\nconst roteadorOutput = $(\"Prepara Roteador\").first().json || {}; \nconst roteadorData = roteadorOutput.payload || {}; \n\nconst plannerPrompt = `Você é um Agente Planejador de Saúde (Planner).\nDiferente de um personal comum, você não prescreve treinos soltos. Você cria ESTRATÉGIAS de longo prazo.\n\nSUA MISSÃO:\n1. Analise o Estado Inicial ($start) e o Objetivo Final ($goal).\n2. Use \"Chain of Thought\": Descreva mentalmente os passos necessários para reduzir a distância entre eles a zero.\n3. Gere um plano estruturado em fases/semanas.\n\nCONTEXTO DO USUÁRIO:\n- Objetivo: ${prefs.goal || \"Melhorar saúde\"}\n- Lesões: ${prefs.injuries || \"Nenhuma\"}\n- Equipamentos: ${JSON.stringify(prefs.available_equipment || [])}\n\nSCHEMA DE RESPOSTA (JSON):\n{\n  \"chain_of_thought\": \"Explique seu raciocínio aqui...\",\n  \"project_name\": \"Nome criativo do projeto (ex: Projeto Verão 30 Dias)\",\n  \"steps\": [\n    {\n      \"phase\": \"Semana 1\",\n      \"focus\": \"Adaptação\",\n      \"actions\": [\"...\"]\n    }\n  ]\n}`;\n\nreturn { json: { payload: {\n  model: \"llama-3.3-70b-versatile\",\n  messages: [\n    { role: \"system\", content: plannerPrompt },\n    { role: \"user\", content: `Crie o plano para: \"${userMsg}\"` }\n  ],\n  response_format: { type: \"json_object\" }\n} } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        464
+      ],
+      "id": "5d5866a5-6c92-4759-8e60-2aa6cad53c78",
+      "name": "Prepara Planner"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  (() => {\n    // 1. Pega o texto cru que veio da IA\n    const rawContent = $json.choices[0].message.content;\n    \n    // 2. Converte o texto em Objeto JavaScript (o \"unboxing\")\n    const data = JSON.parse(rawContent);\n\n    // 3. Monta a mensagem final formatada\n    return {\n      \"message\": \"🗺️ Planejei sua jornada! Aqui está o \" + data.project_name + \":\\n\\n\" + \n      \"🧠 Raciocínio: \" + data.chain_of_thought + \"\\n\\n\" +\n      data.steps.map(s => \"📅 \" + s.phase + \" (\" + s.focus + \"):\\n\" + s.actions.map(a => \"- \" + a).join(\"\\n\")).join(\"\\n\\n\")\n    }\n  })()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2272,
+        512
+      ],
+      "id": "6c1e0d8e-0959-4a3d-b479-ab578bd86e47",
+      "name": "Respond to Webhook4"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_learning (user_id, bad_experience)\nVALUES ($1, $2);",
+        "options": {
+          "queryReplacement": "={{ [\n  $node[\"Webhook\"].json.body.user_id, \n  $node[\"Webhook\"].json.body.message \n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1936,
+        240
+      ],
+      "id": "ac1718fc-35ca-4052-9f60-8ff12ae2d3cb",
+      "name": "Execute a SQL query1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Q0ChOV5clkgHAltG",
+          "name": "Supabase - Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  {\n    \"message\": \"🫡 Entendido! Salvei essa informação ('\" + $node[\"Webhook\"].json.body.message + \"') na minha memória. Não vou sugerir isso novamente nos próximos treinos.\",\n    \"status\": \"learned\"\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2160,
+        240
+      ],
+      "id": "34fa60b7-7837-4ace-b193-c0b3bd5f8d45",
+      "name": "Respond to Webhook5"
     },
     {
       "parameters": {
@@ -133,11 +527,180 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        208,
+        1904,
         0
       ],
-      "id": "d23a1e31-dc46-421f-9ebb-ea359ce2419a",
+      "id": "1b8ff289-9a51-45f6-a022-218f9e639a6f",
       "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "user_preferences",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "condition": "eq",
+              "keyValue": "={{ $node[\"Webhook\"].json.body.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        0
+      ],
+      "id": "16441ea9-8f10-4440-b7f8-5ac91d564661",
+      "name": "Get Preferences",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "VhDa4G1tWR9JYrwZ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "workout_plans",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "condition": "eq",
+              "keyValue": "={{ $node[\"Webhook\"].json.body.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        0
+      ],
+      "id": "e1b0d8e1-bd3b-4fff-8229-2fcd657d7da5",
+      "name": "Get Workout Plan",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "VhDa4G1tWR9JYrwZ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function getSafeJson(nodeName) {\n    try {\n        const node = $(nodeName).first();\n        return (node && node.json) ? node.json : {};\n    } catch (e) {\n        return {};\n    }\n}\n\nconst prefs = getSafeJson(\"Get Preferences\");\nconst plan = getSafeJson(\"Get Workout Plan\");\nconst userMsg = $(\"Webhook\").first().json.body.message;\nlet memories = [];\ntry {\n    const learningNode = $(\"Get Learning\").first();\n    if (learningNode && learningNode.json && Object.keys(learningNode.json).length > 0) {\n         memories = $(\"Get Learning\").all().map(item => item.json.bad_experience).filter(Boolean);\n    }\n} catch (error) {\n    memories = [];\n}\n\nconst systemPrompt = `Você é uma IA Híbrida: Health AI.\nSua missão é classificar a intenção E gerar a resposta final técnica.\n\nSCHEMA DE RESPOSTA (JSON):\n{\n  \"intent\": \"emergency\" | \"planning\" | \"feedback\" | \"nutrition\" | \"workout\" | \"update_preferences\",\n  \"reply_message\": \"Texto contextual e ESPECÍFICO. Confirme se salvou os dados.\",\n  \"data\": {\n    \"goal\": \"...\", \"injuries\": \"...\", \"disliked_foods\": [], \"disliked_exercises\": [], \"available_equipment\": [],\n    \"feedback_content\": \"...\" \n  }\n}\n\nMEMÓRIA DE ERROS:\n${memories.length > 0 ? JSON.stringify(memories) : \"Nenhum histórico.\"}\n\nDIRETRIZES:\n1. Se for atualização de perfil (como definir objetivo), confirme que entendeu e salvou.\n2. Seja específico.\n\nCONTEXTO ATUAL:\n- Objetivo Atual: ${prefs.goal || \"Não definido (Novo Usuário)\"}\n- Lesões: ${prefs.injuries || \"Nenhuma\"}\n- Equipamentos: ${JSON.stringify(prefs.available_equipment || [\"Peso do corpo\"])}`;\n\nconst promptContexto = `MENSAGEM DO USUÁRIO: \"${userMsg}\"`;\n\nreturn { json: { payload: { \n  model: \"llama-3.3-70b-versatile\", \n  messages: [\n    { role: \"system\", content: systemPrompt },\n    { role: \"user\", content: promptContexto }\n  ], \n  response_format: { type: \"json_object\" } \n} } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        0
+      ],
+      "id": "2b3003af-4c88-4d83-96ba-244b5012a4f1",
+      "name": "Preparar Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        688,
+        0
+      ],
+      "id": "04e818b6-9bca-47fd-91a3-1bd3c423fe42",
+      "name": "Roteador IA",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tRiAFyf2W3GuJQ9Z",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "user_preferences",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "condition": "eq",
+              "keyValue": "={{ $node[\"Webhook\"].json.body.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        416
+      ],
+      "id": "69af46d9-ebe5-4e45-ad27-8ed4543dd0cc",
+      "name": "Get Preferences1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "VhDa4G1tWR9JYrwZ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const userMsg = $(\"Webhook\").first().json.body.message;\nconst systemPrompt = `Sua única função é classificar a mensagem do usuário em uma destas 4 categorias:\n\n1. EMERGENCY: Se houver dor física grave, falta de ar, desmaio, infarto.\n2. PLANNING: Se o usuário pedir um plano de longo prazo, cronograma, projeto de 30 dias.\n3. FEEDBACK: Se o usuário estiver elogiando ou reclamando de uma sugestão anterior (ex: 'doeu', 'não gostei').\n4. NORMAL: Qualquer outra coisa (logs de comida, pedido de treino simples, atualização de perfil).\n\nResponda APENAS a palavra da categoria. Nada mais.`;\nreturn {\n  json: {\n    payload: {\n      model: \"llama-3.3-70b-versatile\",\n      messages: [\n        { role: \"system\", content: systemPrompt },\n        { role: \"user\", content: userMsg }\n      ],\n      temperature: 0\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "c420b4f5-a4b8-46eb-9a4d-ae3308bfed6b",
+      "name": "Prepara Roteador"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT bad_experience FROM ai_learning WHERE user_id = $1",
+        "options": {
+          "queryReplacement": "={{ [ $node[\"Webhook\"].json.body.user_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "4e12ea98-80f6-4c41-b0db-f46562f6c98c",
+      "name": "Get Learning",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Q0ChOV5clkgHAltG",
+          "name": "Supabase - Postgres account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -146,18 +709,7 @@
       "main": [
         [
           {
-            "node": "Read/Write Files from Disk",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Request": {
-      "main": [
-        [
-          {
-            "node": "Code in JavaScript",
+            "node": "Prepara Roteador",
             "type": "main",
             "index": 0
           }
@@ -168,7 +720,7 @@
       "main": [
         [
           {
-            "node": "Create a row",
+            "node": "Switch",
             "type": "main",
             "index": 0
           }
@@ -186,11 +738,211 @@
         ]
       ]
     },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a row1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Preferences1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara Planner": {
+      "main": [
+        [
+          {
+            "node": "Agente Planner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente Planner": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Read/Write Files from Disk": {
       "main": [
         [
           {
+            "node": "Preparar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Preferences": {
+      "main": [
+        [
+          {
+            "node": "Get Workout Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workout Plan": {
+      "main": [
+        [
+          {
+            "node": "Get Learning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt": {
+      "main": [
+        [
+          {
             "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteador IA": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Preferences1": {
+      "main": [
+        [
+          {
+            "node": "Prepara Planner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara Roteador": {
+      "main": [
+        [
+          {
+            "node": "Roteador IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Learning": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
             "type": "main",
             "index": 0
           }
@@ -203,10 +955,10 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "9eaa4a9b-9295-4133-a05a-276116198c19",
+  "versionId": "0a3cbae0-13bf-4c9f-bcd4-e65907da51b7",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "7b8195e36842a623e03b08c4f097a8d5ad71c69a7db0b8ca8e7e386d039a8775"
+    "instanceId": "f6bc6ddf7788eeb5b8a0c9738ed3f094c04734f9fed79e3ae5bbda60be585bd8"
   },
   "id": "D9oE2I7dzl8SVah3Ud-sh",
   "tags": []
